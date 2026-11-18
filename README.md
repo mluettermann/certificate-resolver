@@ -1,6 +1,6 @@
 # Certificate Resolver
 
-Automated wildcard Let's Encrypt certificates without a DNS-provider API — fully self-hosted in a single Docker stack, with a web UI for day-to-day operation.
+Automated wildcard Let's Encrypt certificates without a DNS-provider API — fully self-hosted in a single Docker container, operated from the command line or via an optional [web UI](https://github.com/mluettermann/certificate-resolver-ui).
 
 Supports any number of domains. Issues wildcard certificates for `example.com` and `*.example.com` — or, without wildcard, certificates for an explicit list of hostnames (e.g. `test.example.com` + `www.test.example.com`) — as PEM (fullchain, key, cert) and PFX for IIS. After issuance or renewal, certificates are automatically distributed to all configured targets.
 
@@ -8,15 +8,9 @@ Supports any number of domains. Issues wildcard certificates for `example.com` a
 
 ## What's in the stack
 
-The `docker-compose.yml` runs three services:
+The `docker-compose.yml` runs the **`certificate-resolver`** service (container `certificate-resolver`): the acme-dns server, acme.sh issuance/renewal and the distribution to all targets. Everything is controlled via `docker exec` (see [Issuing a certificate](#issuing-a-certificate)).
 
-| Service | Container | Purpose |
-|---|---|---|
-| `certificate-resolver` | `certificate-resolver` | acme-dns server + acme.sh issuance/renewal + distribution |
-| `cert-ui` | `certificate-resolver-ui` | Web UI (login + 2FA) to manage domains and targets |
-| `sftp` | `certificate-sftp` | SFTP drop (port 2222) for Windows/IIS to fetch PFX files |
-
-The UI image is built from a separate repository ([`certificate-resolver-ui`](https://github.com/mluettermann/certificate-resolver-ui)) and deployed as part of this stack.
+**Optional web UI:** [`certificate-resolver-ui`](https://github.com/mluettermann/certificate-resolver-ui) (login + 2FA, domain and target management) runs as its own stack next to the resolver and is not required. It controls the resolver container by name and shares `DATA_ROOT`, so install the resolver first and then follow the UI's README.
 
 ---
 
@@ -47,13 +41,12 @@ This server (port 53)
 - A public, static IP address
 - Port 53 (UDP + TCP) reachable from the internet
 - Write access to the DNS zone (once per domain)
-- A reverse proxy (e.g. Traefik) for the web UI over HTTPS (recommended)
 
 ---
 
 ## Deployment
 
-Prebuilt images are published to the GitHub Container Registry (`ghcr.io/mluettermann/certificate-resolver`, `ghcr.io/mluettermann/certificate-resolver-ui`), so `docker compose pull` is enough. To build the resolver image yourself instead, run `docker compose build`.
+A prebuilt image is published to the GitHub Container Registry (`ghcr.io/mluettermann/certificate-resolver`), so `docker compose pull` is enough. To build the resolver image yourself instead, run `docker compose build`.
 
 ### 1. Prepare the host data layout
 
@@ -74,9 +67,6 @@ At minimum:
 ```env
 ACMEDNS_ZONE=acmedns.auth.example.com
 SERVER_IP=1.2.3.4
-DOMAIN=cert.example.com            # hostname of the web UI (Traefik router)
-UI_SECRET_KEY=$(openssl rand -hex 32)
-UI_SECURE_COOKIES=true             # the UI runs behind TLS
 ```
 
 ### 3. Set DNS records (once)
@@ -95,13 +85,11 @@ docker compose pull
 docker compose up -d
 ```
 
-On first start the UI creates an `admin` account. If `UI_ADMIN_PASSWORD` is not set, a random password is generated and printed once — retrieve it with:
+Check that acme-dns and the renewal daemon are up:
 
 ```bash
-docker compose logs cert-ui | grep -A2 "Initial admin"
+docker compose logs certificate-resolver
 ```
-
-A password change is enforced on first login.
 
 ---
 
@@ -138,9 +126,9 @@ A password change is enforced on first login.
 /opt/certificate-resolver/        # DATA_ROOT — persistent state
 ├── data/                        # acme-dns db, acmedns-credentials.json, acme.sh data
 ├── certs/                       # issued certificates (per domain)
-├── ui-data/                     # UI state: users.json, audit.log, login_attempts.json
+├── ui-data/                     # only with the optional web UI: users.json, audit.log
 ├── sftp-home/                   # SFTP drop directories
-├── cert-targets.yml             # distribution config (also editable in the UI)
+├── cert-targets.yml             # distribution config
 └── sftp-users.conf              # SFTP user list
 
 /var/log/certificate_resolver/   # LOG_ROOT — all logs (rotated automatically)
@@ -155,7 +143,7 @@ A password change is enforced on first login.
 
 ## Issuing a certificate
 
-Either use the **Domain Setup** tab in the UI, or the CLI:
+Via the CLI (or the **Domain Setup** tab of the optional web UI):
 
 **Step 1 — Register** (prints the CNAME to add to DNS):
 ```bash
@@ -172,7 +160,7 @@ _acme-challenge.example.com  CNAME  <uuid>.acmedns.auth.example.com
 docker exec certificate-resolver /scripts/issue.sh example.com
 ```
 
-**Delete a domain** (certs + acme-dns registration + acme.sh data; the UI also removes it from `cert-targets.yml`):
+**Delete a domain** (certs + acme-dns registration + acme.sh data; remove its entry from `cert-targets.yml` yourself — the web UI does this automatically):
 ```bash
 docker exec certificate-resolver /scripts/delete.sh example.com
 ```
@@ -220,7 +208,7 @@ Located at `/opt/certificate-resolver/certs/<domain>/` on the host.
 
 ## Certificate distribution
 
-After issuance/renewal, certificates are distributed according to **`cert-targets.yml`** (editable in the UI's Deploy Setup tab). A failed target no longer fails the whole issuance — the certificate stays valid and a single consolidated email lists any failed targets.
+After issuance/renewal, certificates are distributed according to **`cert-targets.yml`** (also editable in the web UI's Deploy Setup tab). A failed target no longer fails the whole issuance — the certificate stays valid and a single consolidated email lists any failed targets.
 
 **`ssh`** — SCP transfer to any SSH host (Traefik, nginx, Apache, …):
 ```yaml
@@ -323,7 +311,7 @@ Add a Windows server (run on the host, from a repo checkout):
 ./scripts/host/sftp-add-user.sh win-iis-1 /path/to/win-iis-1.pub
 docker compose restart sftp
 ```
-Then add the user under the domain in `cert-targets.yml` (or via the UI). Windows fetches `/certs/<domain>/certificate.pfx` via SFTP on port 2222 (key auth).
+Then add the user under the domain in `cert-targets.yml`. Windows fetches `/certs/<domain>/certificate.pfx` via SFTP on port 2222 (key auth).
 
 Import on Windows:
 ```powershell
@@ -375,11 +363,6 @@ docker exec certificate-resolver /scripts/setup.sh example.com
 ```
 Then update the CNAME in the DNS zone with the new value.
 
-**Web UI not reachable behind Traefik:** verify `DOMAIN` is set (an empty value yields `Host(\`\`)`), and that both Traefik and `cert-ui` share the `traefik_proxy` network. Test the backend directly:
-```bash
-docker run --rm --network traefik_proxy curlimages/curl -s http://certificate-resolver-ui:5000/health
-```
-
 **Detailed logs:** see `/var/log/certificate_resolver/` (e.g. `tail -f .../renewal.log`).
 
 **`windows-ssh` import fails with "The PFX file you are trying to import requires either a different password or membership in an Active Directory principal"** even though the password is correct: the target's Windows CryptoAPI can't parse OpenSSL 3.x's default PFX encoding (AES-256+SHA-256). Set `legacy_pfx: true` on that target — see [Certificate distribution](#certificate-distribution).
@@ -392,7 +375,7 @@ docker run --rm --network traefik_proxy curlimages/curl -s http://certificate-re
 
 ```
 .
-├── docker-compose.yml              # resolver + cert-ui + sftp
+├── docker-compose.yml              # resolver
 ├── Dockerfile
 ├── .env-example
 ├── cert-targets.yml                # distribution targets (seed)
@@ -432,7 +415,7 @@ docker run --rm --network traefik_proxy curlimages/curl -s http://certificate-re
 
 ## Security
 
-This container holds SSH keys that can log in to every deploy target, and the UI controls it through the Docker socket. Please read [SECURITY.md](SECURITY.md) before exposing anything to the internet.
+This container holds SSH keys that can log in to every deploy target (and the optional web UI controls it through the Docker socket). Please read [SECURITY.md](SECURITY.md) before exposing anything to the internet.
 
 ## License
 
