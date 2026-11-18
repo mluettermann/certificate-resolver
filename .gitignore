@@ -1,0 +1,27 @@
+# Local environment / secrets — never commit
+.env
+*.env.local
+
+# Runtime data (normally lives under DATA_ROOT on the host)
+data/
+certs/
+ui-data/
+sftp-home/*/
+acmedns-credentials.json
+
+# Keys and certificates
+*.pem
+*.key
+*.pfx
+*.p12
+id_ed25519*
+id_rsa*
+ssh-key*
+
+# Logs
+*.log
+
+# OS / editor clutter
+.DS_Store
+.vscode/
+.idea/

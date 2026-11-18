@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cert-targets.yml – Editor</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --panel:#fff; --text:#1d2330; --muted:#6b7385; --border:#d8dce5;
+    --accent:#2f6fed; --accent-t:#fff; --danger:#d23b3b; --warn-bg:#fff4d6; --warn-t:#6b4b00;
+    --code-bg:#0f1420; --code-t:#d6e2ff;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#12151c; --panel:#1b2030; --text:#e6e9f2; --muted:#99a1b5; --border:#2d3550;
+      --warn-bg:#3a2f10; --warn-t:#ffd98a; --code-bg:#0a0d14; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
+  header{padding:14px 20px;background:var(--panel);border-bottom:1px solid var(--border);
+    display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+  header h1{margin:0;font-size:18px}
+  header small{color:var(--muted)}
+  main{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:16px;padding:16px;align-items:start}
+  @media (max-width:1000px){ main{grid-template-columns:1fr} }
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px}
+  .domain{margin-bottom:16px}
+  .domain-head{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+  .domain-head input{font-weight:600;font-size:15px}
+  .card{border:1px solid var(--border);border-radius:8px;padding:12px;margin:10px 0;background:var(--bg)}
+  .card-head{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  .badge{font-size:11px;padding:2px 6px;border-radius:99px;background:var(--accent);color:var(--accent-t)}
+  .badge.old{background:var(--muted)}
+  .desc{color:var(--muted);font-size:12px;margin:0 0 10px}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .grid .full{grid-column:1/-1}
+  label{display:block;font-size:12px;color:var(--muted)}
+  label.chk{display:flex;gap:6px;align-items:center;color:var(--text);font-size:13px}
+  label .req{color:var(--danger)}
+  .hint{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+  input[type=text],input[type=number],select,textarea{
+    width:100%;padding:7px 9px;margin-top:3px;border:1px solid var(--border);border-radius:6px;
+    background:var(--panel);color:var(--text);font:inherit}
+  textarea{resize:vertical;font-family:ui-monospace,Consolas,monospace}
+  button{padding:7px 12px;border:1px solid var(--border);border-radius:6px;background:var(--panel);
+    color:var(--text);cursor:pointer;font:inherit}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);color:var(--accent-t);border-color:var(--accent)}
+  button.danger{color:var(--danger)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .spacer{flex:1}
+  .sticky{position:sticky;top:16px}
+  #out{height:60vh;min-height:300px;background:var(--code-bg);color:var(--code-t);
+    font-family:ui-monospace,Consolas,monospace;font-size:13px;white-space:pre;overflow:auto}
+  #warn{margin-top:10px}
+  #warn div{background:var(--warn-bg);color:var(--warn-t);padding:6px 10px;border-radius:6px;margin-top:6px;font-size:12px}
+  details{margin-top:10px}
+  summary{cursor:pointer;color:var(--muted)}
+  .opts{display:flex;gap:16px;flex-wrap:wrap;margin:10px 0}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>cert-targets.yml – Editor</h1>
+    <small>Läuft komplett offline · nichts wird gesendet oder gespeichert</small>
+  </div>
+  <div class="row">
+    <input type="file" id="file" accept=".yml,.yaml,.txt" hidden>
+    <button id="btnLoad">📂 Bestehende Datei laden</button>
+    <button id="btnReset" class="danger">Zurücksetzen</button>
+  </div>
+</header>
+
+<main>
+  <section>
+    <div id="domains"></div>
+    <div class="panel row">
+      <button id="btnAddDomain" class="primary">+ Domain hinzufügen</button>
+      <details style="margin:0;flex:1">
+        <summary>YAML einfügen statt Datei laden</summary>
+        <textarea id="paste" rows="6" placeholder="Inhalt der bestehenden cert-targets.yml hier einfügen …"></textarea>
+        <button id="btnPaste" style="margin-top:6px">Importieren</button>
+      </details>
+    </div>
+  </section>
+
+  <section class="sticky">
+    <div class="panel">
+      <div class="row">
+        <strong>Ergebnis</strong><span class="spacer"></span>
+        <button id="btnCopy">📋 Kopieren</button>
+        <button id="btnDownload" class="primary">⬇ Als cert-targets.yml speichern</button>
+      </div>
+      <div class="opts">
+        <label class="chk"><input type="checkbox" id="optHeader" checked> Kurzen Header-Kommentar einfügen</label>
+        <label class="chk"><input type="checkbox" id="optSnippet"> Nur neu hinzugefügte Targets (Snippet zum Einfügen unter <code>targets:</code>)</label>
+      </div>
+      <textarea id="out" readonly spellcheck="false"></textarea>
+      <div id="warn"></div>
+      <details>
+        <summary>Hinweise</summary>
+        <p class="desc">
+          • Der Domain-Schlüssel muss <code>$CERTDOMAIN</code> von acme.sh entsprechen (Basisdomain, z. B. <code>example.com</code>).<br>
+          • Beim Import einer bestehenden Datei gehen Kommentare verloren (nur Daten werden gelesen).
+            Zum Erhalt der Kommentare: Datei laden → neue Targets anlegen → „Nur neu hinzugefügte Targets“ aktivieren → Snippet in die Originaldatei einfügen.<br>
+          • Existiert die Domain in der Originaldatei schon, hänge das Target dort an die bestehende Liste an (keine doppelten Schlüssel).
+        </p>
+      </details>
+    </div>
+  </section>
+</main>
+
+<datalist id="dl-key"><option value="/data/ssh/id_ed25519"></datalist>
+<datalist id="dl-reload-linux">
+  <option value="docker kill --signal=SIGUSR1 traefik">
+  <option value="systemctl reload nginx">
+  <option value="systemctl reload apache2">
+  <option value="apachectl graceful">
+</datalist>
+<datalist id="dl-reload-win">
+  <option value="powershell -File C:\certs\reload-iis.ps1 -Domain {{DOMAIN}}">
+</datalist>
+
+<script>
+"use strict";
+
+/* ───────────── Typ-Definitionen ───────────── */
+const sshCommon = [
+  {k:'host', l:'Host', req:true, ph:'server.example.com'},
+  {k:'user', l:'User', def:'root'},
+  {k:'port', l:'Port', t:'number', def:'22'},
+  {k:'key',  l:'SSH-Key (Pfad im Container)', def:'/data/ssh/id_ed25519', list:'dl-key'},
+];
+
+const TYPES = {
+  'ssh': {
+    label:'ssh – SCP + optionaler Reload',
+    desc:'Nginx, Apache, Traefik (file provider + watch: true) oder jedes SSH-System.',
+    fields:[
+      ...sshCommon,
+      {k:'remote_cert_dir', l:'remote_cert_dir', req:true, ph:'/opt/traefik/certs', full:true,
+        hint:'Host-seitiger Pfad. Zertifikate landen in remote_cert_dir/<domain>/'},
+      {k:'reload_cmd', l:'reload_cmd (optional)', full:true, list:'dl-reload-linux',
+        hint:'Traefik mit watch: true braucht keinen Reload.'},
+    ]
+  },
+  'windows-ssh': {
+    label:'windows-ssh – SCP + Import in LocalMachine\\My',
+    desc:'Windows mit Win32-OpenSSH. User braucht lokale Adminrechte. Das PFX-Passwort wird bei jeder Ausstellung zufällig erzeugt.',
+    fields:[
+      ...sshCommon.map(f => f.k==='user' ? {...f, def:'Administrator'} : f),
+      {k:'remote_cert_dir', l:'remote_cert_dir', req:true, def:'C:\\certs', full:true},
+      {k:'legacy_pfx', l:'legacy_pfx (RC2/3DES-SHA1 für ältere Hosts, z. B. Server 2016)', t:'bool', full:true},
+      {k:'reload_script', l:'reload_script (optional, Pfad im Container)', ph:'/scripts/remote/reload-iis.ps1', full:true,
+        hint:'Wird bei jedem Deploy nach remote_cert_dir kopiert.'},
+      {k:'reload_cmd', l:'reload_cmd (optional)', full:true, list:'dl-reload-win',
+        hint:'{{DOMAIN}} wird durch die Domain ersetzt.'},
+    ]
+  },
+  'sftp-drop': {
+    label:'sftp-drop – PFX im SFTP-Drop ablegen',
+    desc:'Windows-Server holen /certs/<domain>/certificate.pfx per SFTP (Port 2222). User anlegen mit ./scripts/host/sftp-add-user.sh',
+    fields:[
+      {k:'sftp_users', l:'sftp_users (einer pro Zeile)', t:'list', req:true, full:true, ph:'win-iis-1\nwin-iis-2'},
+    ]
+  },
+  'proxmox': {
+    label:'proxmox – Proxmox VE (pveproxy)',
+    desc:'Schreibt nach /etc/pve/local/ und startet pveproxy neu. Kein remote_cert_dir / reload_cmd nötig.',
+    fields:[ ...sshCommon ]
+  },
+};
+
+/* ───────────── State ───────────── */
+let state;
+
+function newTarget(type, isNew = true){
+  const f = {};
+  for(const s of TYPES[type].fields) if(s.def !== undefined) f[s.k] = s.def;
+  return {type, f, isNew};
+}
+function resetState(){
+  state = {domains:[{name:'', targets:[newTarget('ssh')]}]};
+}
+
+/* ───────────── DOM-Helfer ───────────── */
+const $ = s => document.querySelector(s);
+function h(tag, attrs = {}, ...kids){
+  const e = document.createElement(tag);
+  for(const [k,v] of Object.entries(attrs)){
+    if(k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if(k === 'class') e.className = v;
+    else if(v !== false && v != null) e.setAttribute(k, v === true ? '' : v);
+  }
+  for(const c of kids.flat()){
+    if(c == null) continue;
+    e.append(c.nodeType ? c : document.createTextNode(c));
+  }
+  return e;
+}
+
+/* ───────────── Rendering ───────────── */
+function render(){
+  const root = $('#domains');
+  root.innerHTML = '';
+  state.domains.forEach((d, di) => {
+    const nameInput = h('input', {type:'text', placeholder:'Domain, z. B. example.com'});
+    nameInput.value = d.name;
+    nameInput.addEventListener('input', () => { d.name = nameInput.value; update(); });
+
+    const typeSel = h('select', {}, Object.entries(TYPES).map(([k,v]) => h('option', {value:k}, v.label)));
+    const addBtn = h('button', {class:'primary', onclick:() => {
+      d.targets.push(newTarget(typeSel.value)); render(); update();
+    }}, '+ Target');
+
+    root.append(h('div', {class:'panel domain'},
+      h('div', {class:'domain-head'},
+        h('span', {}, '🌐'), nameInput,
+        h('button', {class:'danger', title:'Domain entfernen', onclick:() => {
+          if(!d.targets.length || confirm('Domain inkl. aller Targets entfernen?')){
+            state.domains.splice(di,1); render(); update();
+          }
+        }}, '🗑')),
+      d.targets.map((t, ti) => renderTarget(d, t, ti)),
+      h('div', {class:'row'}, typeSel, addBtn)
+    ));
+  });
+}
+
+function renderTarget(d, t, ti){
+  const spec = TYPES[t.type];
+  const sel = h('select', {style:'flex:1'}, Object.entries(TYPES).map(([k,v]) =>
+    h('option', {value:k, selected:k === t.type}, v.label)));
+  sel.addEventListener('change', () => {
+    const nt = newTarget(sel.value, t.isNew);
+    for(const k of ['host','key']) if(t.f[k] && spec.fields.some(s=>s.k===k) && TYPES[sel.value].fields.some(s=>s.k===k)) nt.f[k] = t.f[k];
+    d.targets[ti] = nt; render(); update();
+  });
+
+  const head = h('div', {class:'card-head'},
+    h('span', {class:'badge' + (t.isNew ? '' : ' old')}, t.isNew ? 'neu' : 'importiert'),
+    sel,
+    h('button', {title:'Duplizieren', onclick:() => {
+      d.targets.splice(ti+1, 0, {type:t.type, f:JSON.parse(JSON.stringify(t.f)), isNew:true}); render(); update();
+    }}, '⧉'),
+    h('button', {class:'danger', title:'Target entfernen', onclick:() => {
+      d.targets.splice(ti,1); render(); update();
+    }}, '🗑'));
+
+  const grid = h('div', {class:'grid'});
+  for(const s of spec.fields){
+    if(s.showIf && !s.showIf(t.f)) continue;
+    grid.append(renderField(t, s));
+  }
+  return h('div', {class:'card'}, head, h('p', {class:'desc'}, spec.desc), grid);
+}
+
+function renderField(t, s){
+  const cls = s.full ? 'full' : '';
+  const hint = s.hint ? h('span', {class:'hint'}, s.hint) : null;
+
+  if(s.t === 'bool'){
+    const cb = h('input', {type:'checkbox'});
+    cb.checked = !!t.f[s.k];
+    cb.addEventListener('change', () => {
+      t.f[s.k] = cb.checked;
+      if(s.rerender) render();
+      update();
+    });
+    return h('div', {class:cls}, h('label', {class:'chk'}, cb, s.l), hint);
+  }
+
+  let input;
+  if(s.t === 'list'){
+    input = h('textarea', {rows:3, placeholder:s.ph || ''});
+    input.value = Array.isArray(t.f[s.k]) ? t.f[s.k].join('\n') : (t.f[s.k] || '');
+  } else {
+    input = h('input', {type: s.t === 'number' ? 'number' : 'text', placeholder:s.ph || '', list:s.list, min: s.t==='number' ? 0 : null,
+      spellcheck:'false', autocomplete:'off'});
+    input.value = t.f[s.k] ?? '';
+  }
+  input.addEventListener('input', () => { t.f[s.k] = input.value; update(); });
+  return h('div', {class:cls},
+    h('label', {}, s.l, s.req ? h('span', {class:'req'}, ' *') : null, input), hint);
+}
+
+/* ───────────── YAML-Ausgabe ───────────── */
+const HEADER = [
+  '# cert-targets.yml — Certificate distribution configuration',
+  '# Mounted into the container at /data/cert-targets.yml (read-only).',
+  ''
+];
+
+function yScalar(v){
+  if(typeof v === 'boolean' || typeof v === 'number') return String(v);
+  const s = String(v).replace(/[\r\n]+/g, ' ');
+  const plain = /^[A-Za-z0-9_\/.@][A-Za-z0-9_\/.\-@]*$/.test(s);
+  const reserved = /^(true|false|null|yes|no|on|off|y|n)$/i.test(s);
+  const numeric = /^[-+]?(\d+\.?\d*|\.\d+)$/.test(s);
+  if(plain && !reserved && !numeric) return s;
+  return "'" + s.replace(/'/g, "''") + "'";
+}
+function toList(v){
+  const arr = Array.isArray(v) ? v : String(v || '').split(/\r?\n/);
+  return arr.map(x => String(x).trim()).filter(Boolean);
+}
+
+function targetLines(d, t, idx, W){
+  const spec = TYPES[t.type];
+  const lbl = `${d.name.trim() || '(ohne Domain)'} / ${t.type} #${idx+1}`;
+  const pairs = [['type', t.type]];
+  const known = new Set(['type']);
+
+  for(const s of spec.fields){
+    known.add(s.k);
+    if(s.showIf && !s.showIf(t.f)) continue;
+    const v = t.f[s.k];
+    if(s.t === 'bool'){ if(v || s.emitFalse) pairs.push([s.k, !!v]); continue; }
+    if(s.t === 'list'){
+      const arr = toList(v);
+      if(arr.length) pairs.push([s.k, arr]);
+      else if(s.req) W.push(`${lbl}: „${s.k}“ ist leer.`);
+      continue;
+    }
+    const str = v == null ? '' : String(v).trim();
+    if(!str){ if(s.req) W.push(`${lbl}: Pflichtfeld „${s.k}“ fehlt.`); continue; }
+    if(s.t === 'number'){
+      if(/^\d+$/.test(str)) pairs.push([s.k, Number(str)]);
+      else { W.push(`${lbl}: „${s.k}“ ist keine ganze Zahl.`); pairs.push([s.k, str]); }
+    } else pairs.push([s.k, str]);
+  }
+  // unbekannte Felder aus Import unverändert durchreichen
+  for(const k of Object.keys(t.f)){
+    if(known.has(k)) continue;
+    const v = t.f[k];
+    if(Array.isArray(v) ? v.length : (v !== '' && v != null)) pairs.push([k, v]);
+  }
+
+  const out = [];
+  pairs.forEach(([k, v], i) => {
+    const pre = i === 0 ? '    - ' : '      ';
+    if(Array.isArray(v)){
+      out.push(`${pre}${k}:`);
+      v.forEach(x => out.push(`        - ${yScalar(x)}`));
+    } else out.push(`${pre}${k}: ${yScalar(v)}`);
+  });
+  return out;
+}
+
+function gen(){
+  const snippet = $('#optSnippet').checked;
+  const L = [], W = [], seen = {};
+  if(!snippet){
+    if($('#optHeader').checked) L.push(...HEADER);
+    L.push('targets:');
+  }
+  for(const d of state.domains){
+    const ts = snippet ? d.targets.filter(t => t.isNew) : d.targets;
+    if(snippet && !ts.length) continue;
+    const name = d.name.trim();
+    if(!name) W.push('Eine Domain hat keinen Namen.');
+    else {
+      if(seen[name]) W.push(`Domain „${name}“ kommt mehrfach vor – in YAML sind doppelte Schlüssel ungültig, bitte zusammenführen.`);
+      seen[name] = 1;
+    }
+    if(L.length) L.push('');
+    if(!ts.length){ L.push(`  ${yScalar(name || 'DOMAIN')}: []`); continue; }
+    L.push(`  ${yScalar(name || 'DOMAIN')}:`);
+    ts.forEach((t, i) => L.push(...targetLines(d, t, i, W)));
+  }
+  return {text: L.join('\n') + '\n', W};
+}
+
+function update(){
+  const {text, W} = gen();
+  $('#out').value = text;
+  const box = $('#warn');
+  box.innerHTML = '';
+  [...new Set(W)].forEach(w => box.append(h('div', {}, '⚠ ' + w)));
+}
+
+/* ───────────── Import (Minimal-Parser für dieses Schema) ───────────── */
+function parseScalar(s){
+  s = s.trim();
+  if(s === '') return '';
+  if(s[0] === "'"){
+    let i = 1, o = '';
+    while(i < s.length){
+      if(s[i] === "'"){ if(s[i+1] === "'"){ o += "'"; i += 2; continue; } break; }
+      o += s[i++];
+    }
+    return o;
+  }
+  if(s[0] === '"'){
+    let i = 1, o = '';
+    while(i < s.length && s[i] !== '"'){
+      if(s[i] === '\\' && i+1 < s.length){ o += s[i+1] === 'n' ? '\n' : s[i+1]; i += 2; }
+      else o += s[i++];
+    }
+    return o;
+  }
+  s = s.replace(/\s+#.*$/, '');
+  if(s === 'true') return true;
+  if(s === 'false') return false;
+  return s;
+}
+
+function parseYaml(text){
+  const domains = [];
+  let dom = null, tgt = null, listKey = null;
+  let started = false, domIndent = null, itemIndent = null;
+
+  const kv = str => {
+    const m = str.match(/^([A-Za-z0-9_]+):\s*(.*)$/);
+    if(!m || !tgt) return;
+    const [, key, val] = m;
+    if(val === '' || val.startsWith('#')){ listKey = key; tgt.f[key] = []; return; }
+    listKey = null;
+    const v = parseScalar(val);
+    if(key === 'type') tgt.type = String(v); else tgt.f[key] = v;
+  };
+
+  for(const raw of text.split(/\r?\n/)){
+    const t = raw.trim();
+    if(!t || t[0] === '#') continue;
+    const indent = raw.match(/^ */)[0].length;
+    if(!started){ if(/^targets:\s*(#.*)?$/.test(t)) started = true; continue; }
+    if(domIndent === null) domIndent = indent;
+
+    if(indent <= domIndent && !t.startsWith('-')){
+      const m = t.match(/^(.+?):\s*(\[\])?\s*(#.*)?$/);
+      if(m){ dom = {name:String(parseScalar(m[1])), targets:[]}; domains.push(dom); tgt = null; listKey = null; itemIndent = null; }
+      continue;
+    }
+    if(!dom) continue;
+
+    if(t.startsWith('-')){
+      const rest = t.replace(/^-\s*/, '');
+      if(itemIndent === null) itemIndent = indent;
+      if(indent <= itemIndent){
+        tgt = {type:'', f:{}, isNew:false};
+        dom.targets.push(tgt); listKey = null;
+        kv(rest);
+      } else if(listKey && tgt){
+        tgt.f[listKey].push(String(parseScalar(rest)));
+      }
+      continue;
+    }
+    kv(t);
+  }
+
+  // Normalisieren
+  let skipped = 0;
+  for(const d of domains){
+    d.targets = d.targets.filter(t => {
+      if(!TYPES[t.type]){ skipped++; return false; }
+      for(const s of TYPES[t.type].fields){
+        if(s.t === 'list' && Array.isArray(t.f[s.k])) t.f[s.k] = t.f[s.k].join('\n');
+        if(s.t === 'bool' && t.f[s.k] !== undefined) t.f[s.k] = t.f[s.k] === true || t.f[s.k] === 'true';
+        if(s.t === 'bool' && t.f[s.k] === undefined && s.def !== undefined) t.f[s.k] = s.def;
+      }
+      return true;
+    });
+  }
+  return {domains, skipped};
+}
+
+function importText(text){
+  const {domains, skipped} = parseYaml(text);
+  if(!domains.length){ alert('Keine Targets gefunden (erwartet wird ein „targets:“-Block).'); return; }
+  const hasData = state.domains.some(d => d.name.trim() || d.targets.length > 1);
+  if(hasData && !confirm('Aktuelle Eingaben durch importierte Datei ersetzen?')) return;
+  state = {domains};
+  render(); update();
+  alert(`Import: ${domains.length} Domain(s), ${domains.reduce((a,d)=>a+d.targets.length,0)} Target(s).` +
+        (skipped ? `\n${skipped} Target(s) mit unbekanntem Typ wurden übersprungen.` : '') +
+        '\n\nHinweis: Kommentare aus der Originaldatei werden nicht übernommen.');
+}
+
+/* ───────────── Events ───────────── */
+$('#btnAddDomain').onclick = () => {
+  state.domains.push({name:'', targets:[newTarget('ssh')]}); render(); update();
+  window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'});
+};
+$('#btnReset').onclick = () => { if(confirm('Alles zurücksetzen?')){ resetState(); render(); update(); } };
+$('#btnLoad').onclick = () => $('#file').click();
+$('#file').onchange = e => {
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = () => importText(String(r.result));
+  r.readAsText(f);
+  e.target.value = '';
+};
+$('#btnPaste').onclick = () => { if($('#paste').value.trim()) importText($('#paste').value); };
+$('#optHeader').onchange = update;
+$('#optSnippet').onchange = update;
+
+$('#btnCopy').onclick = async () => {
+  const ta = $('#out'), btn = $('#btnCopy');
+  try { await navigator.clipboard.writeText(ta.value); }
+  catch(_){ ta.select(); document.execCommand('copy'); ta.setSelectionRange(0,0); }
+  const old = btn.textContent; btn.textContent = '✔ Kopiert';
+  setTimeout(() => btn.textContent = old, 1200);
+};
+$('#btnDownload').onclick = () => {
+  const blob = new Blob([$('#out').value], {type:'text/yaml'});
+  const a = h('a', {href:URL.createObjectURL(blob), download:'cert-targets.yml'});
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+
+/* ───────────── Start ───────────── */
+resetState();
+render();
+update();
+</script>
+</body>
+</html>

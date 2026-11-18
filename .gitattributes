@@ -1,0 +1,5 @@
+# Always check out text files with LF, regardless of the local
+# core.autocrlf setting. Shell scripts get COPYed as-is into the
+# Linux container image — CRLF line endings break the "#!/bin/bash"
+# shebang (exec: no such file or directory).
+* text=auto eol=lf

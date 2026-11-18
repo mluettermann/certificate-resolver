@@ -1,0 +1,119 @@
+services:
+
+  certificate-resolver:
+    image: ghcr.io/mluettermann/certificate-resolver:latest
+    build: .                      # "docker compose build" builds the image locally instead
+    container_name: certificate-resolver
+    restart: unless-stopped
+    # Values are interpolated from the environment: a local ./.env when
+    # using the docker CLI, or the stack variables set in the Portainer UI.
+    # (We do NOT use "env_file: .env" — Portainer does not create that file.)
+    environment:
+      # ── acme-dns (required) ──
+      - ACMEDNS_ZONE=${ACMEDNS_ZONE}
+      - SERVER_IP=${SERVER_IP}
+      # ── certificate renewal ──
+      - RENEW_HOUR=${RENEW_HOUR:-3}
+      - RENEW_MINUTE=${RENEW_MINUTE:-0}
+      - SKIP_WEEKENDS=${SKIP_WEEKENDS:-1}     # 1 = no renewal check on Sat/Sun, 0 = daily
+      # Time zone for RENEW_HOUR/RENEW_MINUTE, the weekend check and log timestamps
+      - TZ=${TZ:-Europe/Berlin}
+      # ── email notifications (optional) ──
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - NOTIFY_EMAIL=${NOTIFY_EMAIL:-}
+      # ── acme.sh runtime data ──
+      - ACME_DATA=${ACME_DATA:-/data/acme}
+      # ── logging (all logs go to the shared /logs mount) ──
+      - CR_LOG_LEVEL=${CR_LOG_LEVEL:-info}
+      - CR_LOG_FILE=${CR_LOG_FILE:-/logs/certificate-resolver.log}
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+    volumes:
+      # All runtime data/config live under DATA_ROOT on the host
+      # (default /opt/certificate-resolver, override via .env).
+      # Run scripts/host/bootstrap.sh ONCE to create this layout before
+      # the first start (Docker would otherwise create directories where
+      # files are expected).
+      - ${DATA_ROOT:-/opt/certificate-resolver}/data:/data                                  # acme-dns db + credentials + acme.sh data
+      - ${DATA_ROOT:-/opt/certificate-resolver}/certs:/certs                                # certificate files
+      - ${DATA_ROOT:-/opt/certificate-resolver}/cert-targets.yml:/data/cert-targets.yml:ro  # distribution configuration
+      - ${DATA_ROOT:-/opt/certificate-resolver}/sftp-home:/sftp-home                        # SFTP drop: write access for PFX files
+      - ${LOG_ROOT:-/var/log/certificate_resolver}:/logs                                   # all log files (single external folder)
+    networks:
+      default:
+
+ 
+  # ── Web UI ───────────────────────────────────────────────────────
+  # Flask interface (login + 2FA) for controlling the resolver.
+  # Controls the resolver via "docker exec" through the Docker socket and
+  # shares its data (credentials, certs, cert-targets.yml).
+  # URL: http://<host>:5050
+  cert-ui:
+    image: ghcr.io/mluettermann/certificate-resolver-ui:latest   # https://github.com/mluettermann/certificate-resolver-ui
+    container_name: certificate-resolver-ui
+    restart: unless-stopped
+    depends_on:
+      - certificate-resolver
+    ports:
+      - "5050:5000"
+    environment:
+      - RESOLVER_CONTAINER=certificate-resolver            # must match the container_name above
+      - SECRET_KEY=${UI_SECRET_KEY:?UI_SECRET_KEY must be set (openssl rand -hex 32)}
+      - ADMIN_PASSWORD=${UI_ADMIN_PASSWORD:-}             # empty = random password (then shown in the log)
+      - SECURE_COOKIES=${UI_SECURE_COOKIES:-false}        # set true only when the UI runs behind TLS
+      - TRUST_PROXY=${UI_TRUST_PROXY:-true}               # honor X-Forwarded-For from Traefik (real client IP in logs)
+      - SESSION_TIMEOUT_MINUTES=${UI_SESSION_TIMEOUT_MINUTES:-30}  # idle logout after N minutes
+      - LOGIN_MAX_ATTEMPTS=${UI_LOGIN_MAX_ATTEMPTS:-5}             # lock account after N failed login/2FA attempts
+      - LOGIN_LOCKOUT_MINUTES=${UI_LOGIN_LOCKOUT_MINUTES:-15}      # lockout duration
+      - DATA_DIR=/data                                     # UI-private: users.json, audit.log
+      - LOG_DIR=/logs                                      # access/error logs -> shared /logs mount
+      - CERT_DIR=/certs                                    # shared certificates (read-only)
+      - CREDS_FILE=/resolver-data/acmedns-credentials.json # acme-dns credentials (read-only)
+      - TARGETS_FILE=/cert-targets.yml                     # same file the resolver reads
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock                                 # to control the resolver
+      - ${DATA_ROOT:-/opt/certificate-resolver}/ui-data:/data                      # UI-private (users.json, audit.log)
+      - ${DATA_ROOT:-/opt/certificate-resolver}/certs:/certs:ro                    # resolver's certs (read)
+      - ${DATA_ROOT:-/opt/certificate-resolver}/data:/resolver-data:ro             # resolver's /data, for the credentials (read)
+      - ${DATA_ROOT:-/opt/certificate-resolver}/cert-targets.yml:/cert-targets.yml # distribution config (read + write)
+      - ${LOG_ROOT:-/var/log/certificate_resolver}:/logs                          # all log files (single external folder)
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      default:
+      traefik_proxy:
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: traefik_proxy
+      traefik.http.routers.ui.rule: Host(`${DOMAIN}`)
+      traefik.http.routers.ui.entrypoints: websecure
+      traefik.http.routers.ui.tls: "true"
+      traefik.http.routers.ui.service: ui
+      traefik.http.services.ui.loadbalancer.server.port: 5000
+      traefik.http.services.ui.loadbalancer.server.scheme: http
+      traefik.http.services.ui.loadbalancer.passhostheader: "true"
+
+# ── Networking ─────────────────────────────────────────────────────
+# IPv6 enabled so deploy targets that only have an AAAA record can be served.
+# A compose network needs its own IPv6 address pool, hence the explicit
+# ULA subnet below (reached outbound via Docker's IPv6 NAT/masquerading).
+# Requires working IPv6 on the host (Docker >= 27 enables IPv6 NAT by default).
+networks:
+  # External network created by the Traefik stack. For an external network
+  # only the reference is allowed — no driver/ipam/enable_ipv6 here.
+  traefik_proxy:
+    external: true
+  default:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: fd00:c0ff:ee::/64

@@ -1,0 +1,15 @@
+.git
+.github
+.env
+*.md
+!README.md
+data/
+certs/
+ui-data/
+sftp-home/
+*.pem
+*.key
+*.pfx
+*.log
+.DS_Store
+offline-cert-target-yml-creator.html
