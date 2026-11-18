@@ -46,7 +46,7 @@ This server (port 53)
 
 ## Deployment
 
-A prebuilt image is published to the GitHub Container Registry (`ghcr.io/mluettermann/certificate-resolver`), so `docker compose pull` is enough. To build the resolver image yourself instead, run `docker compose build`.
+A prebuilt image is published to the GitHub Container Registry (`ghcr.io/mluettermann/certificate-resolver`), so `docker compose pull` is enough. To build it yourself instead: `docker build -t ghcr.io/mluettermann/certificate-resolver:latest .`
 
 ### 1. Prepare the host data layout
 
@@ -367,7 +367,7 @@ Then update the CNAME in the DNS zone with the new value.
 
 **`windows-ssh` import fails with "The PFX file you are trying to import requires either a different password or membership in an Active Directory principal"** even though the password is correct: the target's Windows CryptoAPI can't parse OpenSSL 3.x's default PFX encoding (AES-256+SHA-256). Set `legacy_pfx: true` on that target — see [Certificate distribution](#certificate-distribution).
 
-**`windows-ssh` reload fails with "The argument '...' to the -File parameter does not exist"**: the `reload_script` file was never synced to the host, either because `reload_script` isn't set on the target, or because the container is running an older image that predates the sync logic — pull or rebuild it (`docker compose pull` / `docker compose build`) and recreate the container (`docker compose up -d --force-recreate`).
+**`windows-ssh` reload fails with "The argument '...' to the -File parameter does not exist"**: the `reload_script` file was never synced to the host, either because `reload_script` isn't set on the target, or because the container is running an older image that predates the sync logic — pull or rebuild it (`docker compose pull` / `docker build`, see [Deployment](#deployment)) and recreate the container (`docker compose up -d --force-recreate`).
 
 ---
 
