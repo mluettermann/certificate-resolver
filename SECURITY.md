@@ -16,6 +16,10 @@ The Certificate Resolver is a high-value target. Please treat it accordingly:
 - Use **dedicated deploy accounts with minimal rights** on the targets instead of `root`/`Administrator` where the target type allows it, and restrict the SSH key on the target side (e.g. `from="<resolver-ip>"` in `authorized_keys`).
 - Restrict file permissions on `DATA_ROOT` (`chmod 700`) and back it up encrypted.
 
+## Supported versions
+
+Security fixes are released for the newest major version only (image tag `1` = newest 1.x). Keep the default `RESOLVER_TAG` or update regularly.
+
 ## Reporting a vulnerability
 
 Please **do not open a public issue** for security problems. Use GitHub's private vulnerability reporting instead: *Security → Report a vulnerability* in this repository.

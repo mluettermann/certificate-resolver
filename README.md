@@ -413,6 +413,37 @@ Then update the CNAME in the DNS zone with the new value.
 
 ---
 
+## Versions & updates
+
+Releases follow [Semantic Versioning](https://semver.org/) and are created automatically by [release-please](https://github.com/googleapis/release-please) from the commit history; see [CHANGELOG.md](CHANGELOG.md) and the GitHub releases. Every release publishes these image tags:
+
+| Tag | Meaning |
+|---|---|
+| `1.2.3` | exactly this release |
+| `1.2` | newest patch release of 1.2 |
+| `1` | newest 1.x release — **default in `docker-compose.yml`** |
+| `latest` | newest release, including breaking major versions |
+| `edge` | current `main` branch, untested |
+
+The compose file uses `${RESOLVER_TAG:-1}`, so automatic updaters such as Watchtower pick up fixes and new features, but never a breaking major release. Set `RESOLVER_TAG` in `.env` to pin something else.
+
+### Upstream components
+
+acme.sh and acme-dns are pinned to fixed versions in the `Dockerfile` (`ACME_SH_VERSION`, `ACME_DNS_VERSION`) so that the same release always produces the same image. [Renovate](https://docs.renovatebot.com/) opens pull requests for new versions; merged updates are shipped in the next patch release.
+
+### Contributing: commit messages
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) — they decide the next version number:
+
+| Prefix | Example | Release |
+|---|---|---|
+| `fix:` | `fix: handle empty cert-targets.yml` | patch (1.0.**1**) |
+| `feat:` | `feat: add proxmox backup server target` | minor (1.**1**.0) |
+| `feat!:` / `BREAKING CHANGE:` footer | `feat!: rename UI_SECRET_KEY` | major (**2**.0.0) |
+| `docs:`, `chore:`, `ci:`, `refactor:` | `docs: fix typo` | no release |
+
+---
+
 ## Security
 
 This container holds SSH keys that can log in to every deploy target (and the optional web UI controls it through the Docker socket). Please read [SECURITY.md](SECURITY.md) before exposing anything to the internet.

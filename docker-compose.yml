@@ -1,7 +1,7 @@
 services:
 
   certificate-resolver:
-    image: ghcr.io/mluettermann/certificate-resolver:latest
+    image: ghcr.io/mluettermann/certificate-resolver:${RESOLVER_TAG:-1} # x-release-please-major
     container_name: certificate-resolver
     restart: unless-stopped
     # Values are interpolated from the environment: a local ./.env when

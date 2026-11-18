@@ -6,7 +6,13 @@ FROM golang:1.27-alpine AS builder
 
 RUN apk add --no-cache git gcc musl-dev
 ENV CGO_ENABLED=1
-RUN go install github.com/joohoi/acme-dns@latest
+# Pinned for reproducible images. v0.7.2 is the newest tag Go accepts as a
+# release for this module path, i.e. exactly what "@latest" used to build.
+# Newer upstream tags (v1.x, v2.x; repo now acme-dns/acme-dns) are not valid
+# Go module versions and need a source build + config review — manual upgrade.
+# renovate: datasource=go depName=github.com/joohoi/acme-dns
+ARG ACME_DNS_VERSION=v0.7.2
+RUN go install github.com/joohoi/acme-dns@${ACME_DNS_VERSION}
 
 # ═══════════════════════════════════════════════════════════════
 # Stage 2: Final image
@@ -40,10 +46,13 @@ COPY --from=builder /go/bin/acme-dns /usr/local/bin/acme-dns
 RUN chmod +x /usr/local/bin/acme-dns
 
 # Install acme.sh to /opt/acme.sh (not the home directory)
+# Pinned release instead of the master branch; updated via Renovate.
+# renovate: datasource=github-releases depName=acmesh-official/acme.sh
+ARG ACME_SH_VERSION=3.1.6
 ENV ACME_HOME=/opt/acme.sh
-RUN curl -fsSL https://github.com/acmesh-official/acme.sh/archive/refs/heads/master.tar.gz \
+RUN curl -fsSL "https://github.com/acmesh-official/acme.sh/archive/refs/tags/${ACME_SH_VERSION}.tar.gz" \
     | tar -xz -C /opt/ \
-    && mv /opt/acme.sh-master /opt/acme.sh \
+    && mv "/opt/acme.sh-${ACME_SH_VERSION}" /opt/acme.sh \
     && chmod +x /opt/acme.sh/acme.sh \
     && ln -sf /opt/acme.sh/acme.sh /usr/local/bin/acme.sh
 
