@@ -59,6 +59,24 @@ fi
 # Requires IPv6 to be enabled on the container network (see docker-compose.yml).
 SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=15 -i $KEY -p $PORT"
 
+# Address family for ssh/scp: any (default) | inet (IPv4 only) | inet6 (IPv6 only).
+# Per target via "address_family", global default via SSH_ADDRESS_FAMILY.
+# Needed when a host's A record points somewhere else than its AAAA record
+# (e.g. IPv4 only reaches an HTTP(S) proxy) — without it, the container's
+# resolver prefers IPv4 because the compose network uses a ULA IPv6 subnet.
+ADDRESS_FAMILY=$(_field address_family "${SSH_ADDRESS_FAMILY:-any}")
+case "$ADDRESS_FAMILY" in
+  any|inet|inet6) ;;
+  *)
+    log err "[$DOMAIN] Invalid address_family '$ADDRESS_FAMILY' (allowed: any, inet, inet6)."
+    exit 1
+    ;;
+esac
+SSH_OPTS="$SSH_OPTS -o AddressFamily=$ADDRESS_FAMILY"
+if [ "$ADDRESS_FAMILY" != "any" ]; then
+  log info "[$DOMAIN → $HOST] SSH address family: $ADDRESS_FAMILY"
+fi
+
 # ── Error handling ───────────────────────────────────────────────
 _on_error() {
   local EXIT_CODE=$?
@@ -78,6 +96,7 @@ log info "[$DOMAIN → $HOST] Transferring certificates to $REMOTE_CERT_DIR/$DOM
 scp -P "$PORT" \
     -o StrictHostKeyChecking=no \
     -o ConnectTimeout=15 \
+    -o AddressFamily="$ADDRESS_FAMILY" \
     -i "$KEY" \
     "$CERT_DIR/fullchain.pem" \
     "$CERT_DIR/privkey.pem" \

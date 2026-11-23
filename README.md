@@ -107,6 +107,7 @@ docker compose logs certificate-resolver
 | `SMTP_HOST/PORT/USER/PASSWORD/FROM` | empty | Email notifications (leave empty to disable) |
 | `NOTIFY_EMAIL` | empty | Recipient for notifications |
 | `ACME_DATA` | `/data/acme` | acme.sh runtime data dir |
+| `SSH_ADDRESS_FAMILY` | `any` | Default address family for all SSH-based targets: `any`, `inet` (IPv4 only) or `inet6` (IPv6 only); per-target override `address_family` (see [IPv6](#ipv6)) |
 | `CR_LOG_LEVEL` | `info` | stdout verbosity for the daemon |
 | `CR_LOG_FILE` | `/logs/certificate-resolver.log` | structured resolver log |
 | `CR_LOG_MAX_BYTES` / `CR_LOG_BACKUPS` | `5 MB` / `5` | rotation of the above |
@@ -221,7 +222,10 @@ targets:
       key: /data/ssh/id_ed25519
       remote_cert_dir: /opt/traefik/certs
       reload_cmd: "systemctl reload nginx"   # optional
+      address_family: inet6                  # optional: any (default) | inet | inet6
 ```
+
+`address_family` works the same for all SSH-based types (`ssh`, `windows-ssh`, `proxmox`, `esxi`) — see [IPv6](#ipv6) for when you need it.
 
 **`windows-ssh`** — SCP transfer to a Windows host running an SSH server (Win32-OpenSSH), then automatic import into `Cert:\LocalMachine\My`. The PFX is deleted from the remote host again immediately after import; on a successful deploy the reload script and the domain's cert folder (and `remote_cert_dir` itself, if now empty) are removed too — nothing is left behind on the Windows host beyond the imported certificate and its IIS binding:
 ```yaml
@@ -345,6 +349,28 @@ networks:
     ipam:
       config:
         - subnet: fd00:c0ff:ee::/64
+```
+
+**SSH prefers IPv4 when a host has both A and AAAA records.** The container's C library (musl, Alpine) sorts resolved addresses per RFC 6724: the container's IPv6 source address is a ULA (`fd00:…`), whose policy label doesn't match a public IPv6 destination, while IPv4 source and destination labels do — so IPv4 wins. musl has no `/etc/gai.conf` to change this.
+
+That's a problem when the A record points somewhere else than the AAAA record — typically an IPv4 address that only forwards HTTP(S) (ports 80/443) through a proxy to the IPv6-only host: SSH then lands on the proxy, transfers files there and runs `reload_cmd` on the wrong machine (e.g. `docker: command not found`). Force IPv6 for such targets:
+
+```yaml
+targets:
+  example.com:
+    - type: ssh
+      host: server.example.com
+      address_family: inet6   # any (default) | inet | inet6
+      remote_cert_dir: /opt/traefik/certs
+```
+
+Or set it for all SSH-based targets with `SSH_ADDRESS_FAMILY=inet6` in `.env` (a target's `address_family` still overrides it, e.g. `address_family: any` for an IPv4-only host). `inet6` has no IPv4 fallback: a host without a reachable AAAA record fails to deploy.
+
+To see which address SSH actually picks from inside the container:
+
+```bash
+docker exec certificate-resolver sh -c \
+  'ssh -v -o BatchMode=yes -i /data/ssh/id_ed25519 root@server.example.com true 2>&1 | grep "Connecting to"'
 ```
 
 ---

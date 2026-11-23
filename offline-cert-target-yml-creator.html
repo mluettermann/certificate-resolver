@@ -112,6 +112,7 @@
 </main>
 
 <datalist id="dl-key"><option value="/data/ssh/id_ed25519"></datalist>
+<datalist id="dl-af"><option value="any"><option value="inet"><option value="inet6"></datalist>
 <datalist id="dl-reload-linux">
   <option value="docker kill --signal=SIGUSR1 traefik">
   <option value="systemctl reload nginx">
@@ -131,6 +132,8 @@ const sshCommon = [
   {k:'user', l:'User', def:'root'},
   {k:'port', l:'Port', t:'number', def:'22'},
   {k:'key',  l:'SSH-Key (Pfad im Container)', def:'/data/ssh/id_ed25519', list:'dl-key'},
+  {k:'address_family', l:'address_family (optional)', ph:'any', list:'dl-af',
+    hint:'inet6 = nur IPv6 (z. B. wenn IPv4 nur auf einen HTTP-Proxy zeigt), inet = nur IPv4, leer/any = Standard.'},
 ];
 
 const TYPES = {

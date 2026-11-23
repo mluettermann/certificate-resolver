@@ -24,6 +24,8 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_FROM=${SMTP_FROM:-}
       - NOTIFY_EMAIL=${NOTIFY_EMAIL:-}
+      # ── SSH deployers: address family (any | inet | inet6), per-target override: address_family ──
+      - SSH_ADDRESS_FAMILY=${SSH_ADDRESS_FAMILY:-any}
       # ── acme.sh runtime data ──
       - ACME_DATA=${ACME_DATA:-/data/acme}
       # ── logging (all logs go to the shared /logs mount) ──

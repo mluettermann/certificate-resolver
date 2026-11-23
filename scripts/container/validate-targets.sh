@@ -137,6 +137,9 @@ for domain, entries in targets.items():
             key_path = t.get("key") or "/data/ssh/id_ed25519"
             if not os.path.isfile(key_path):
                 issues.append(f"{label}: SSH key file not found in container: {key_path}")
+            af = str(t.get("address_family") or os.environ.get("SSH_ADDRESS_FAMILY") or "any")
+            if af not in ("any", "inet", "inet6"):
+                issues.append(f"{label}: invalid address_family '{af}' (allowed: any, inet, inet6) — deploy will fail.")
 
 for issue in issues:
     print(issue)
